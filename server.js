@@ -160,6 +160,8 @@ function attachWebSocketLogic(wss) {
                 const session = getOrCreateSession(token);
                 session.lastActive = Date.now();
 
+                console.log(`[WS] ${currentRole.toUpperCase()} joined session: ${token}`);
+
                 if (currentRole === 'target') {
                     if (session.target && session.target !== ws && session.target.readyState === WebSocket.OPEN) {
                         session.target.close();
@@ -207,6 +209,8 @@ function attachWebSocketLogic(wss) {
                 if (!currentToken) return;
                 const session = sessions.get(currentToken);
                 if (!session || !session.target) return;
+
+                console.log(`[WS Input] Relay -> Target (${currentToken}): event=${data.event} x=${data.x} y=${data.y}`);
 
                 if (session.target.readyState === WebSocket.OPEN) {
                     session.target.send(JSON.stringify({
