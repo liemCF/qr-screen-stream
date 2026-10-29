@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream Viewer & Control Console</title>
+    <style>
+        :root {
+            --bg: #090c10;
+            --surface: #0f141c;
+            --surface-border: #1e2638;
+            --primary: #3b82f6;
+            --primary-hover: #1d4ed8;
+            --accent: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-main: #f1f5f9;
+            --text-muted: #8b9bb4;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top Navbar */
+        header {
+            height: 56px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--surface-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 10;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            letter-spacing: -0.01em;
+        }
+
+        .brand-badge {
+            font-size: 0.7rem;
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--primary);
+            padding: 3px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .nav-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .session-selector {
+            display: flex;
+            align-items: center;
+            background: #151b26;
+            border: 1px solid var(--surface-border);
+            border-radius: 8px;
+            padding: 4px 10px;
+            font-size: 0.85rem;
+        }
+
+        .session-selector input {
+            background: transparent;
+            border: none;
+            color: #ffffff;
+            outline: none;
+            font-family: ui-monospace, monospace;
+            width: 130px;
+            font-size: 0.85rem;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #ffffff;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+        }
+
+        .btn-outline {
+            background: #151b26;
+            border-color: var(--surface-border);
+            color: var(--text-main);
+        }
+
+        .btn-outline:hover {
+            background: #1c2433;
+        }
+
+        .btn-active {
+            background: rgba(16, 185, 129, 0.18);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Main Workspace */
+        main {
+            flex: 1;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Canvas Viewport */
+        .viewport {
+            flex: 1;
+            background: #05070a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            outline: none;
+            user-select: none;
+        }
+
+        #stream-canvas {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            background: #000000;
+            cursor: crosshair;
+        }
+
+        /* Placeholder overlay */
+        .placeholder-overlay {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            color: var(--text-muted);
+            text-align: center;
+            padding: 24px;
+        }
+
+        .placeholder-overlay.hidden {
+            display: none;
+        }
+
+        /* Floating HUD Stats */
+        .hud-overlay {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            display: flex;
+            gap: 8px;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .hud-badge {
+            background: rgba(15, 20, 28, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-family: ui-monospace, monospace;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .hud-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #64748b;
+        }
+
+        .hud-dot.live {
+            background: var(--accent);
+            box-shadow: 0 0 8px var(--accent);
+        }
+
+        /* Side Panel: Session & QR Code */
+        .sidebar {
+            width: 320px;
+            background: var(--surface);
+            border-left: 1px solid var(--surface-border);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow-y: auto;
+            gap: 20px;
+            transition: transform 0.2s ease;
+        }
+
+        .sidebar.collapsed {
+            display: none;
+        }
+
+        .panel-section {
+            background: #141b26;
+            border: 1px solid var(--surface-border);
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .panel-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .qr-card {
+            background: #ffffff;
+            padding: 12px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .qr-card img {
+            width: 100%;
+            max-width: 200px;
+            height: auto;
+            display: block;
+        }
+
+        .link-copy-box {
+            display: flex;
+            gap: 6px;
+        }
+
+        .link-copy-box input {
+            flex: 1;
+            background: #090c10;
+            border: 1px solid var(--surface-border);
+            color: var(--text-muted);
+            padding: 6px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-family: ui-monospace, monospace;
+            outline: none;
+        }
+
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+        }
+
+        /* Custom switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #273347;
+            transition: .2s;
+            border-radius: 20px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .2s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--primary);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(16px);
+        }
+
+        .info-list {
+            font-size: 0.8rem;
+            line-height: 1.6;
+            color: var(--text-muted);
+        }
+
+        .info-list span {
+            color: var(--text-main);
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            <span>Screen Stream Console</span>
+            <span class="brand-badge">Ritmada</span>
+        </div>
+
+        <div class="nav-controls">
+            <div class="session-selector">
+                <input type="text" id="input-token" placeholder="Session Token" spellcheck="false">
+                <button class="btn btn-outline" id="btn-connect" style="padding: 2px 8px; font-size: 0.75rem;">Connect</button>
+            </div>
+            <button class="btn btn-primary" id="btn-new-session">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                New QR
+            </button>
+            <button class="btn btn-outline" id="btn-toggle-sidebar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <!-- Canvas Screen Viewport -->
+        <div class="viewport" id="viewport-container" tabindex="0">
+            <div class="hud-overlay">
+                <div class="hud-badge">
+                    <div class="hud-dot" id="hud-status-dot"></div>
+                    <span id="hud-status-text">Disconnected</span>
+                </div>
+                <div class="hud-badge">
+                    <span id="hud-fps">0</span> FPS
+                </div>
+                <div class="hud-badge">
+                    <span id="hud-res">0x0</span>
+                </div>
+                <div class="hud-badge">
+                    <span id="hud-latency">--</span> ms
+                </div>
+            </div>
+
+            <div class="placeholder-overlay" id="placeholder-box">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+                <div style="font-size: 1.1rem; font-weight: 500;">No Stream Active</div>
+                <div style="font-size: 0.85rem; max-width: 320px;">Scan the QR code with target device or click "New QR" to begin receiving screen frames.</div>
+            </div>
+
+            <canvas id="stream-canvas" width="1280" height="720"></canvas>
+        </div>
+
+        <!-- Sidebar / Control Drawer -->
+        <aside class="sidebar" id="sidebar">
+            <!-- QR & Session Details -->
+            <div class="panel-section">
+                <div class="panel-title">Target Pairing QR</div>
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Network Address (cho máy quét):</label>
+                    <select id="select-network-host" style="width: 100%; background: #090c10; border: 1px solid var(--surface-border); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 0.78rem; outline: none;">
+                        <option value="detecting">Detecting network IPs...</option>
+                    </select>
+                    <input type="text" id="input-custom-host" placeholder="https://tunnel.domain.com" style="display: none; width: 100%; background: #090c10; border: 1px solid var(--surface-border); color: #fff; padding: 6px; border-radius: 6px; font-size: 0.78rem; margin-top: 6px; outline: none;">
+                </div>
+                <div class="qr-card">
+                    <img id="qr-image" src="" alt="Session QR Code" style="display: none;">
+                    <span id="qr-loading" style="font-size: 0.8rem; color: #333;">Generating QR...</span>
+                </div>
+                <div class="link-copy-box">
+                    <input type="text" id="share-link-input" readonly value="">
+                    <button class="btn btn-outline" id="btn-copy-link" style="padding: 4px 8px;">Copy</button>
+                </div>
+                <div style="margin-top: 8px; font-size: 0.72rem; color: #94a3b8; line-height: 1.4;">
+                    * Lưu ý: Khi quét bằng điện thoại trên cùng Wi-Fi, chọn chế độ HTTPS (cổng 8443) để trình duyệt cho phép quyền chia sẻ màn hình.
+                </div>
+            </div>
+
+            <!-- Remote Input Control -->
+            <div class="panel-section">
+                <div class="panel-title">Interactive Control</div>
+                <div class="toggle-row">
+                    <span>Forward Mouse</span>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-mouse" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="toggle-row">
+                    <span>Forward Keyboard</span>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-keyboard" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="info-list" style="margin-top: 10px; font-size: 0.75rem;">
+                    Clicks and strokes captured on canvas are relayed to the target session.
+                </div>
+            </div>
+
+            <!-- Session Telemetry -->
+            <div class="panel-section">
+                <div class="panel-title">Telemetry</div>
+                <div class="info-list">
+                    <div>Session Token: <span id="tele-token" style="font-family: monospace;">--</span></div>
+                    <div>Target Status: <span id="tele-target">Offline</span></div>
+                    <div>Target UA: <span id="tele-ua" style="font-size: 0.7rem; word-break: break-all;">--</span></div>
+                    <div>Frames Received: <span id="tele-frames">0</span></div>
+                </div>
+            </div>
+
+            <button class="btn btn-outline" id="btn-fullscreen" style="width: 100%; justify-content: center;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+                Fullscreen View
+            </button>
+        </aside>
+    </main>
+
+    <script>
+        const inputToken = document.getElementById('input-token');
+        const btnConnect = document.getElementById('btn-connect');
+        const btnNewSession = document.getElementById('btn-new-session');
+        const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+        const sidebar = document.getElementById('sidebar');
+
+        const qrImage = document.getElementById('qr-image');
+        const qrLoading = document.getElementById('qr-loading');
+        const shareLinkInput = document.getElementById('share-link-input');
+        const btnCopyLink = document.getElementById('btn-copy-link');
+
+        const hudStatusDot = document.getElementById('hud-status-dot');
+        const hudStatusText = document.getElementById('hud-status-text');
+        const hudFps = document.getElementById('hud-fps');
+        const hudRes = document.getElementById('hud-res');
+        const hudLatency = document.getElementById('hud-latency');
+        const placeholderBox = document.getElementById('placeholder-box');
+
+        const teleToken = document.getElementById('tele-token');
+        const teleTarget = document.getElementById('tele-target');
+        const teleUa = document.getElementById('tele-ua');
+        const teleFrames = document.getElementById('tele-frames');
+
+        const toggleMouse = document.getElementById('toggle-mouse');
+        const toggleKeyboard = document.getElementById('toggle-keyboard');
+        const btnFullscreen = document.getElementById('btn-fullscreen');
+        const viewportContainer = document.getElementById('viewport-container');
+
+        const canvas = document.getElementById('stream-canvas');
+        const ctx = canvas.getContext('2d');
+
+        let ws = null;
+        let currentToken = null;
+        let totalFrames = 0;
+        let fpsCounter = 0;
+        let lastStatsTime = performance.now();
+        let lastMoveSent = 0;
+        const frameImg = new Image();
+
+        // Extract token from URL path /viewer/:token if present
+        const pathSegments = window.location.pathname.split('/');
+        if (pathSegments.length >= 3 && pathSegments[1] === 'viewer' && pathSegments[2]) {
+            currentToken = pathSegments[2];
+            inputToken.value = currentToken;
+        }
+
+        const selectNetworkHost = document.getElementById('select-network-host');
+        const inputCustomHost = document.getElementById('input-custom-host');
+        let networkInfo = null;
+
+        async function initNetworkHosts() {
+            try {
+                const res = await fetch('/api/network-info');
+                const json = await res.json();
+                if (json.ok) {
+                    networkInfo = json.data;
+                    selectNetworkHost.innerHTML = '';
+
+                    const optHttpsLan = document.createElement('option');
+                    optHttpsLan.value = `https://${networkInfo.lanIp}:${networkInfo.httpsPort}`;
+                    optHttpsLan.textContent = `Wi-Fi HTTPS: https://${networkInfo.lanIp}:${networkInfo.httpsPort} (Điện thoại)`;
+                    optHttpsLan.selected = true;
+                    selectNetworkHost.appendChild(optHttpsLan);
+
+                    const optHttpLan = document.createElement('option');
+                    optHttpLan.value = `http://${networkInfo.lanIp}:${networkInfo.httpPort}`;
+                    optHttpLan.textContent = `Wi-Fi HTTP: http://${networkInfo.lanIp}:${networkInfo.httpPort}`;
+                    selectNetworkHost.appendChild(optHttpLan);
+
+                    networkInfo.allInterfaces.forEach(iface => {
+                        if (iface.ip !== networkInfo.lanIp) {
+                            const opt = document.createElement('option');
+                            opt.value = `http://${iface.ip}:${networkInfo.httpPort}`;
+                            opt.textContent = `${iface.name}: http://${iface.ip}:${networkInfo.httpPort}`;
+                            selectNetworkHost.appendChild(opt);
+                        }
+                    });
+
+                    const optLocal = document.createElement('option');
+                    optLocal.value = `http://localhost:${networkInfo.httpPort}`;
+                    optLocal.textContent = `Localhost: http://localhost:${networkInfo.httpPort} (Cùng máy)`;
+                    selectNetworkHost.appendChild(optLocal);
+
+                    const optCustom = document.createElement('option');
+                    optCustom.value = 'custom';
+                    optCustom.textContent = 'Custom URL / Tunnel (Ngrok, Cloudflare...)';
+                    selectNetworkHost.appendChild(optCustom);
+                }
+            } catch (err) {
+                console.error('Failed to fetch network info:', err);
+            }
+        }
+
+        function getSelectedBaseUrl() {
+            if (selectNetworkHost.value === 'custom') {
+                return inputCustomHost.value.trim();
+            }
+            return selectNetworkHost.value;
+        }
+
+        selectNetworkHost.addEventListener('change', () => {
+            if (selectNetworkHost.value === 'custom') {
+                inputCustomHost.style.display = 'block';
+                inputCustomHost.focus();
+            } else {
+                inputCustomHost.style.display = 'none';
+                refreshSessionQr();
+            }
+        });
+
+        inputCustomHost.addEventListener('change', refreshSessionQr);
+        inputCustomHost.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') refreshSessionQr();
+        });
+
+        // Initialize session on load
+        (async () => {
+            await initNetworkHosts();
+            if (currentToken) {
+                refreshSessionQr();
+                connectViewer(currentToken);
+            } else {
+                createSession();
+            }
+        })();
+
+        async function refreshSessionQr() {
+            if (!currentToken) return;
+            qrLoading.style.display = 'block';
+            qrImage.style.display = 'none';
+            try {
+                const baseUrl = getSelectedBaseUrl();
+                const url = `/api/session/new?token=${currentToken}&baseUrl=${encodeURIComponent(baseUrl)}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.ok) {
+                    shareLinkInput.value = data.shareUrl;
+                    qrImage.src = data.qrDataUrl;
+                    qrImage.style.display = 'block';
+                    qrLoading.style.display = 'none';
+                }
+            } catch (err) {
+                qrLoading.textContent = 'Error refreshing QR';
+            }
+        }
+
+        async function createSession() {
+            qrLoading.style.display = 'block';
+            qrImage.style.display = 'none';
+            try {
+                const baseUrl = getSelectedBaseUrl();
+                const url = baseUrl && baseUrl !== 'detecting' 
+                    ? `/api/session/new?baseUrl=${encodeURIComponent(baseUrl)}` 
+                    : '/api/session/new';
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.ok) {
+                    currentToken = data.token;
+                    inputToken.value = currentToken;
+                    teleToken.textContent = currentToken;
+                    shareLinkInput.value = data.shareUrl;
+
+                    qrImage.src = data.qrDataUrl;
+                    qrImage.style.display = 'block';
+                    qrLoading.style.display = 'none';
+
+                    window.history.replaceState({}, '', `/viewer/${currentToken}`);
+                    connectViewer(currentToken);
+                }
+            } catch (err) {
+                console.error('Failed to create session:', err);
+                qrLoading.textContent = 'Error generating session QR';
+            }
+        }
+
+        function connectViewer(token) {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+
+            currentToken = token;
+            teleToken.textContent = token;
+
+            const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${proto}//${window.location.host}/ws`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                hudStatusDot.className = 'hud-dot';
+                hudStatusText.textContent = 'Server Connected · Waiting for Target';
+
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    role: 'viewer',
+                    token: token
+                }));
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'status') {
+                        if (data.status === 'target_connected') {
+                            hudStatusDot.className = 'hud-dot live';
+                            hudStatusText.textContent = 'Target Streaming';
+                            teleTarget.textContent = 'Connected (Active)';
+                            teleTarget.style.color = '#10b981';
+                            if (data.info && data.info.userAgent) teleUa.textContent = data.info.userAgent;
+                        } else if (data.status === 'target_disconnected') {
+                            hudStatusDot.className = 'hud-dot';
+                            hudStatusText.textContent = 'Target Disconnected';
+                            teleTarget.textContent = 'Offline';
+                            teleTarget.style.color = '#ef4444';
+                        }
+                    }
+
+                    if (data.type === 'frame') {
+                        renderFrame(data);
+                    }
+                } catch (e) {}
+            };
+
+            ws.onclose = () => {
+                hudStatusDot.className = 'hud-dot';
+                hudStatusText.textContent = 'Server Disconnected';
+            };
+        }
+
+        function renderFrame(frameData) {
+            placeholderBox.classList.add('hidden');
+
+            frameImg.onload = () => {
+                if (canvas.width !== frameData.width || canvas.height !== frameData.height) {
+                    canvas.width = frameData.width;
+                    canvas.height = frameData.height;
+                    hudRes.textContent = `${frameData.width}x${frameData.height}`;
+                }
+                ctx.drawImage(frameImg, 0, 0);
+
+                totalFrames++;
+                fpsCounter++;
+                teleFrames.textContent = totalFrames;
+
+                if (frameData.timestamp) {
+                    const latency = Math.max(0, Date.now() - frameData.timestamp);
+                    hudLatency.textContent = latency;
+                }
+
+                const now = performance.now();
+                if (now - lastStatsTime >= 1000) {
+                    hudFps.textContent = fpsCounter;
+                    fpsCounter = 0;
+                    lastStatsTime = now;
+                }
+            };
+            frameImg.src = frameData.payload;
+        }
+
+        // Mouse Forwarding Calculations
+        function getCanvasNormalizedPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width;
+            const y = (e.clientY - rect.top) / rect.height;
+            return {
+                x: Math.max(0, Math.min(1, x)),
+                y: Math.max(0, Math.min(1, y))
+            };
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!toggleMouse.checked || !ws || ws.readyState !== WebSocket.OPEN) return;
+            const now = performance.now();
+            if (now - lastMoveSent < 33) return; // 30Hz rate limiter
+            lastMoveSent = now;
+
+            const pos = getCanvasNormalizedPos(e);
+            ws.send(JSON.stringify({
+                type: 'input',
+                event: 'mousemove',
+                x: pos.x,
+                y: pos.y
+            }));
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!toggleMouse.checked || !ws || ws.readyState !== WebSocket.OPEN) return;
+            const pos = getCanvasNormalizedPos(e);
+            ws.send(JSON.stringify({
+                type: 'input',
+                event: 'mousedown',
+                button: e.button,
+                x: pos.x,
+                y: pos.y
+            }));
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (!toggleMouse.checked || !ws || ws.readyState !== WebSocket.OPEN) return;
+            const pos = getCanvasNormalizedPos(e);
+            ws.send(JSON.stringify({
+                type: 'input',
+                event: 'mouseup',
+                button: e.button,
+                x: pos.x,
+                y: pos.y
+            }));
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault(); // Prevent default browser context menu when right clicking canvas
+        });
+
+        // Keyboard Forwarding
+        viewportContainer.addEventListener('keydown', (e) => {
+            if (!toggleKeyboard.checked || !ws || ws.readyState !== WebSocket.OPEN) return;
+            // Ignore tab / browser control combos if needed
+            if (e.key === 'F12' || (e.ctrlKey && e.key === 'r')) return;
+
+            ws.send(JSON.stringify({
+                type: 'input',
+                event: 'keydown',
+                key: e.key,
+                code: e.code
+            }));
+        });
+
+        viewportContainer.addEventListener('keyup', (e) => {
+            if (!toggleKeyboard.checked || !ws || ws.readyState !== WebSocket.OPEN) return;
+            ws.send(JSON.stringify({
+                type: 'input',
+                event: 'keyup',
+                key: e.key,
+                code: e.code
+            }));
+        });
+
+        // UI Event Listeners
+        btnConnect.addEventListener('click', () => {
+            const token = inputToken.value.trim();
+            if (token) connectViewer(token);
+        });
+
+        btnNewSession.addEventListener('click', createSession);
+
+        btnToggleSidebar.addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+        });
+
+        btnCopyLink.addEventListener('click', () => {
+            navigator.clipboard.writeText(shareLinkInput.value).then(() => {
+                btnCopyLink.textContent = 'Copied!';
+                setTimeout(() => { btnCopyLink.textContent = 'Copy'; }, 1500);
+            });
+        });
+
+        btnFullscreen.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                viewportContainer.requestFullscreen().catch(err => alert(err.message));
+            } else {
+                document.exitFullscreen();
+            }
+        });
+    </script>
+</body>
+</html>
